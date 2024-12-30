@@ -13,4 +13,7 @@
         "text":"View on GitHub"
     },
     "bannerUrl":"banner.png",
+    "githubRepos":[
+        "MAIOTAchannel/AssetLibraryManager"
+    ]
 }
