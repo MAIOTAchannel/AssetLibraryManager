@@ -1,0 +1,7 @@
+{
+    "name": "com.github.maiotachannel.assets_library_manager",
+    "version": "1.0.0",
+    "displayName": "AssetsLibraryManager",
+    "description": "This is a test package",
+    "unity": "2022.3"
+  }
