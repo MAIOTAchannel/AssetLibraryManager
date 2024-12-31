@@ -7,7 +7,7 @@ jobs:
 
   # Validate Repository Configuration
   config:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     outputs:
       config_package: ${{ steps.config_package.outputs.configPackage }}
     steps:
