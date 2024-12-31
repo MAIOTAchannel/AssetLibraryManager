@@ -26,12 +26,11 @@ public class AssetLibraryManager : EditorWindow
     private string jsonFilePath;
     public List<string> tagOptions = new List<string> { "アバター", "衣装", "小物", "マテリアル", "テクスチャ", "ギミック", "その他" };
     private string searchQuery = "";
-    private int selectedTagMask = -1; // すべてのタグを選択
-    private string urlMappingsFilePath = "Assets/urlMappings.json"; // URLマッピングファイルのパス
+    private int selectedTagMask = 0; // すべてのタグを選択
     private List<UrlMapping> urlMappings = new List<UrlMapping>();
     private const int ItemsPerPage = 20; // 1ページあたりのアイテム数
-    private int currentPage = 0; // 現在のページ
-    private bool deleteZipAfterUnpacking = false; // 解凍後にZipファイルを削除するかどうか
+    private int currentPage = 0;
+    private bool deleteZipAfterUnpacking = false;
     private string libraryDirectory;
 
 
@@ -44,12 +43,15 @@ public class AssetLibraryManager : EditorWindow
     private void OnEnable()
     {
         LoadSettings();
-        libraryDirectory = Path.Combine(workDirectory, "BoothLibrary");
+        libraryDirectory = Path.Combine(workDirectory, "AssetLibraryManager");
         if (!Directory.Exists(libraryDirectory))
         {
             Directory.CreateDirectory(libraryDirectory);
         }
         jsonFilePath = Path.Combine(libraryDirectory, "libraryData.json");
+
+        // 新しいディレクトリを作成
+        CreateSubDirectories();
 
         if (File.Exists(jsonFilePath))
         {
@@ -61,6 +63,19 @@ public class AssetLibraryManager : EditorWindow
         }
 
         LoadUrlMappings();
+    }
+
+    private void CreateSubDirectories()
+    {
+        string[] subDirs = { "Avatars", "Costume", "Tmp", "Other", "Zip" };
+        foreach (var dir in subDirs)
+        {
+            string path = Path.Combine(libraryDirectory, dir);
+            if (!Directory.Exists(path))
+            {
+                Directory.CreateDirectory(path);
+            }
+        }
     }
 
     private void OnGUI()
@@ -234,8 +249,12 @@ public class AssetLibraryManager : EditorWindow
                             download.selectedAvatarName = avatarTitles[newAvatarIndex];
                             SaveDataToJson();
                         }
+                        
+                        if(!File.Exists(download.unityPackagePath))
+                        {
+                            download.unityPackagePath = "";
+                        }
 
-                        string filePath = Path.Combine(libraryDirectory, download.name);
                         if (download.isDownloading)
                         {
                             GUILayout.Label("Downloading", GUILayout.Width(100));
@@ -244,10 +263,11 @@ public class AssetLibraryManager : EditorWindow
                         {
                             GUILayout.Label($"UnPackaging", GUILayout.Width(150));
                         }
-                        else if (downloadedFiles.Contains(download.name) && File.Exists(filePath))
+                        else if (download.unityPackagePath != "")
                         {
                             if (GUILayout.Button("Open Folder", GUILayout.Width(100)))
                             {
+                                string filePath = download.unityPackagePath.Substring(0, download.unityPackagePath.LastIndexOf("\\"));
                                 EditorUtility.RevealInFinder(filePath);
                             }
                             if (!string.IsNullOrEmpty(download.unityPackagePath) && GUILayout.Button("Import", GUILayout.Width(100)))
@@ -270,7 +290,7 @@ public class AssetLibraryManager : EditorWindow
             }
         }
 
-        GUILayout.EndScrollView(); // ここでEndScrollViewを呼び出します
+        GUILayout.EndScrollView();
 
         // ページングボタン
         GUILayout.BeginHorizontal();
@@ -462,7 +482,8 @@ public class AssetLibraryManager : EditorWindow
 
     private async Task DownloadFile(string url, string fileName, Download download)
     {
-        string filePath = Path.Combine(libraryDirectory, fileName);
+        string tmpDirectory = Path.Combine(libraryDirectory, "Tmp");
+        string filePath = Path.Combine(tmpDirectory, fileName);
 
         // 既に存在するファイルをチェック
         if (File.Exists(filePath))
@@ -512,6 +533,7 @@ public class AssetLibraryManager : EditorWindow
                 download.isUnPackaging = true;
                 await UnpackFile(filePath, download);
                 download.isUnPackaging = false;
+                SaveDataToJson();
             }
             else
             {
@@ -526,7 +548,9 @@ public class AssetLibraryManager : EditorWindow
 
     private async Task UnpackFile(string filePath, Download download)
     {
-        string outputDirectory = Path.Combine(libraryDirectory, Path.GetFileNameWithoutExtension(filePath));
+        string tmpDirectory = Path.Combine(libraryDirectory, "Tmp");
+        string outputDirectory = Path.Combine(tmpDirectory, Path.GetFileNameWithoutExtension(filePath));
+        Debug.Log($"Unpacking file to {outputDirectory}");
 
         try
         {
@@ -538,18 +562,21 @@ public class AssetLibraryManager : EditorWindow
 
             Debug.Log("File unpacked successfully.");
 
-            // 解凍後に.unitypackageファイルを検索
-            var unityPackageFiles = Directory.GetFiles(outputDirectory, "*.unitypackage", SearchOption.AllDirectories);
-            if (unityPackageFiles.Length > 0)
-            {
-                download.unityPackagePath = unityPackageFiles[0];
-            }
+            // 解凍後のファイルを移動
+            MoveUnpackedFiles(download, outputDirectory);
 
-            // 解凍後にZipファイルを削除
+            // 解凍後にZipファイルを削除または移動
             if (deleteZipAfterUnpacking)
             {
                 File.Delete(filePath);
                 Debug.Log("Zip file deleted after unpacking.");
+            }
+            else
+            {
+                string zipDirectory = Path.Combine(libraryDirectory, "Zip");
+                string zipFilePath = Path.Combine(zipDirectory, Path.GetFileName(filePath));
+                File.Move(filePath, zipFilePath);
+                Debug.Log("Zip file moved to Zip directory.");
             }
         }
         catch (Exception ex)
@@ -557,6 +584,60 @@ public class AssetLibraryManager : EditorWindow
             Debug.LogError($"Failed to unpack file: {ex.Message}");
         }
     }
+
+    private void MoveUnpackedFiles(Download download, string outputDirectory)
+    {
+        string destinationDirectory = "";
+
+        var item = items.Find(i => i.downloads.Contains(download));
+        if (item != null)
+        {
+            if (item.tags.Contains("アバター"))
+            {
+                string avatarsDirectory = Path.Combine(libraryDirectory, "Avatars", item.title.Replace("\\", "月").Replace("/", "月"));
+                if (!Directory.Exists(avatarsDirectory))
+                {
+                    Directory.CreateDirectory(avatarsDirectory);
+                }
+
+                if (string.IsNullOrEmpty(download.selectedAvatarName))
+                {
+                    destinationDirectory = Path.Combine(avatarsDirectory, item.title.Replace("\\", "月").Replace("/", "月"));
+                }
+                else
+                {
+                    destinationDirectory = Path.Combine(avatarsDirectory, item.title.Replace("\\", "月"), "衣装", item.title.Replace("\\", "月").Replace("/", "月"));
+                }
+            }
+            else if (item.tags.Contains("衣装"))
+            {
+                destinationDirectory = Path.Combine(libraryDirectory, "Costume", item.title.Replace("\\", "月").Replace("/", "月"));
+            }
+            else
+            {
+                string avatarsDirectory = Path.Combine(libraryDirectory, "Other", item.title.Replace("\\", "月").Replace("/", "月"));
+                if (!Directory.Exists(avatarsDirectory))
+                {
+                    Directory.CreateDirectory(avatarsDirectory);
+                }
+                destinationDirectory = Path.Combine(libraryDirectory, "Other", item.title.Replace("\\", "月").Replace("/", "月"),download.name.Replace(".zip",""));
+            }
+
+            try
+            {
+                Directory.Move(outputDirectory, destinationDirectory);
+
+                // 解凍後に.unitypackageファイルを検索
+                var unityPackageFiles = Directory.GetFiles(destinationDirectory, "*.unitypackage", SearchOption.AllDirectories);
+                item.downloads.Find(d => d.name == download.name).unityPackagePath = unityPackageFiles.Length > 0 ? unityPackageFiles[0] : "";
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError($"Failed to move files: {ex.Message}");
+            }
+        }
+    }
+
 
     public Texture2D GetErrorIcon()
     {
@@ -566,16 +647,16 @@ public class AssetLibraryManager : EditorWindow
 
     private void SaveSettings()
     {
-        EditorPrefs.SetString("BoothLibrary_Cookies", cookies);
-        EditorPrefs.SetString("BoothLibrary_WorkDirectory", workDirectory);
-        EditorPrefs.SetBool("BoothLibrary_DeleteZipAfterUnpacking", deleteZipAfterUnpacking);
+        EditorPrefs.SetString("AssetLibraryManager_Cookies", cookies);
+        EditorPrefs.SetString("AssetLibraryManager_WorkDirectory", workDirectory);
+        EditorPrefs.SetBool("AssetLibraryManager_DeleteZipAfterUnpacking", deleteZipAfterUnpacking);
     }
 
     private void LoadSettings()
     {
-        cookies = EditorPrefs.GetString("BoothLibrary_Cookies", "");
-        workDirectory = EditorPrefs.GetString("BoothLibrary_WorkDirectory", Application.dataPath);
-        deleteZipAfterUnpacking = EditorPrefs.GetBool("BoothLibrary_DeleteZipAfterUnpacking", false);
+        cookies = EditorPrefs.GetString("AssetLibraryManager_Cookies", "");
+        workDirectory = EditorPrefs.GetString("AssetLibraryManager_WorkDirectory", Application.dataPath);
+        deleteZipAfterUnpacking = EditorPrefs.GetBool("AssetLibraryManager_DeleteZipAfterUnpacking", false);
     }
 
 
@@ -631,8 +712,8 @@ public class AssetLibraryManager : EditorWindow
             // 既に存在するファイルを認識
             foreach (var download in item.downloads)
             {
-                string filePath = Path.Combine(libraryDirectory, download.name);
-                if (File.Exists(filePath))
+                string filePath = Path.Combine(libraryDirectory, download.name.Replace(".zip",""));
+                if (Directory.Exists(filePath))
                 {
                     downloadedFiles.Add(download.name);
 
@@ -650,12 +731,12 @@ public class AssetLibraryManager : EditorWindow
         }
     }
 
-
     private void LoadUrlMappings()
     {
-        if (File.Exists(urlMappingsFilePath))
+        string path = System.IO.Path.Combine(Application.dataPath, "..", "Packages", "com.github.maiotachannel.assets_library_manager", "urlMappings.json");
+        if (File.Exists(path))
         {
-            string json = File.ReadAllText(urlMappingsFilePath);
+            string json = File.ReadAllText(path);
             urlMappings = JsonConvert.DeserializeObject<List<UrlMapping>>(json);
         }
     }
