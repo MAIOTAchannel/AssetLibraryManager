@@ -31,7 +31,7 @@ jobs:
       contents: write
     env:
       packagePath: Packages/${{ vars.PACKAGE_NAME }}
-    if: always()
+    if: needs.config.outputs.config_package == 'true'
     steps:
 
       # Checkout Local Repository
