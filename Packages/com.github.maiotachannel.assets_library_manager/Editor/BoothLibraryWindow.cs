@@ -111,7 +111,9 @@ public class AssetLibraryManager : EditorWindow
         GUILayout.BeginHorizontal();
         GUILayout.Label("Search", EditorStyles.boldLabel);
         searchQuery = EditorGUILayout.TextField(searchQuery);
+        GUI.SetNextControlName("ClearText");
         selectedTagMask = EditorGUILayout.MaskField(selectedTagMask, tagOptions.ToArray(), GUILayout.Width(200));
+        GUI.FocusControl("ClearText");
         if (GUILayout.Button("+", GUILayout.Width(30)))
         {
             AddNewItemWindow.ShowWindow(this);
