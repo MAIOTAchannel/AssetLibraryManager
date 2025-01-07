@@ -63,6 +63,24 @@ public class AssetLibraryManager : EditorWindow
         }
 
         LoadUrlMappings();
+
+        // âÊëúÇçƒÉçÅ[Éh
+        _ = ReloadImages();
+    }
+
+    private async Task ReloadImages()
+    {
+        foreach (var item in items)
+        {
+            if (!string.IsNullOrEmpty(item.icon))
+            {
+                item.iconTexture = await DownloadImage(item.icon);
+            }
+            if (!string.IsNullOrEmpty(item.shopIcon))
+            {
+                item.shopIconTexture = await DownloadImage(item.shopIcon);
+            }
+        }
     }
 
     private void CreateSubDirectories()
